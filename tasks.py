@@ -25,9 +25,21 @@ def salveaza_in_excel(titlu_produs, pret_produs):
     excel = Excel()
     excel.open_workbook(nume_fisier)
 
-    # dupa modelul generat automat la crearea proiectului
+    # salvam pretul curent in Excel
+    excel.append_rows_to_worksheet([data_curenta, titlu_produs, pret_produs])
+    excel.save_workbook(nume_fisier)
+
+
+def verifica_record(pret_produs):
+    # Numele fisierului Excel
+    nume_fisier = "preturi.xlsx"
+    excel = Excel()
+    excel.open_workbook(nume_fisier)
+
+    # Luam datele dupa modelul generat automat la crearea proiectului
     rows = excel.read_worksheet_as_table("List1", header=True)
 
+    # transformam pretul curent in float
     clean_value = pret_produs.replace(' RON', '').split()[0]
     print(clean_value)
     clean_value_float=float(clean_value.replace(',', '.'))
@@ -35,34 +47,25 @@ def salveaza_in_excel(titlu_produs, pret_produs):
     nr=rows.size
     record=True
     
+    # parcurgem datele ce le avem deja in Excel
     for i in range(1,nr,3):
         old_price=rows.get_row(i)
         value = list(old_price.values())[0]
 
-        # Îndepărtează caracterul non-breaking space și orice alt caracter nedorit
+        # transformam pe rand fiecare pret din Excel in float
         clean_value = value.replace('\xa0RON', '').split()[0]
         print(i,clean_value)
         clean_old_value_float=float(clean_value.replace(',', '.'))
     
+        # comparam preturile anterioare din Excel cu pretul curent
         if clean_value_float>=clean_old_value_float:
             record=False
 
     if record:
         print("the price is the lowest recorded")
 
-    excel.append_rows_to_worksheet([data_curenta, titlu_produs, pret_produs])
-    excel.save_workbook(nume_fisier)
 
-
-@task
-def my_task_3b():
-
-    # Navigate to Site
-    page=browser.goto("https://www.sinsay.com/ro/ro/")
-    
-    # page.wait_for_timeout(1000000)  # Wait for 1000 seconds before closing the browser
-    page.click('button:has-text("OK")')
-
+def cauta_produs(page):
     # Așteaptă să fie disponibil câmpul de căutare și butonul de căutare
     search_button_selector='button:has-text("Căutare")'
     page.wait_for_selector(search_button_selector)
@@ -76,10 +79,23 @@ def my_task_3b():
     page.fill(search_input_selector, product_name)
     page.press(search_input_selector,"Enter")
 
-    # Căutăm denumirea produsului   
-    page.wait_for_selector('div[data-testid="products-results"]')
+    return product_name
 
-    # Selectăm toate imaginile din div-ul cu rezultatele produselor
+
+@task
+def my_task_3b():
+
+    # Navigate to Site
+    page=browser.goto("https://www.sinsay.com/ro/ro/")
+    
+    # page.wait_for_timeout(1000000)  # Wait for 1000 seconds before closing the browser
+    page.click('button:has-text("OK")')
+
+    # Căutăm denumirea produsului   
+    product_name=cauta_produs(page)
+
+    # Lista de rezultate a produselor
+    page.wait_for_selector('div[data-testid="products-results"]')
     list_of_results = page.locator('div[data-testid="products-results"]')
 
     # Extragerea titlului produsului
@@ -94,86 +110,8 @@ def my_task_3b():
     print(f"Titlu: {title}")
     print(f"Preț: {price}")
     if title==product_name:
+        verifica_record(price)
         salveaza_in_excel(title,price)
     else:
         print("product not found")
 
-
-
-@task
-def solve_challenge():
-    """
-    Main task which solves the RPA challenge!
-
-    Downloads the source data Excel file and uses Playwright to fill the entries inside
-    rpachallenge.com.
-    """
-    browser.configure(
-        browser_engine="chromium", 
-        screenshot="only-on-failure", 
-        headless=True 
-    )
-    try:
-        # Reads a table from an Excel file hosted online.
-        excel_file = download_file(
-            EXCEL_URL, target_dir=OUTPUT_DIR, target_filename=FILE_NAME
-        )
-        excel = Excel()
-        excel.open_workbook(excel_file)
-        rows = excel.read_worksheet_as_table("Sheet1", header=True)
-
-        # Surf the automation challenge website and fill in information from the table
-        #  extracted above.
-        page = browser.goto("https://rpachallenge.com/")
-        page.click("button:text('Start')")
-        for row in rows:
-            fill_and_submit_form(row, page=page)
-        element = page.locator("css=div.congratulations")
-        browser.screenshot(element)
-    finally:
-        # A place for teardown and cleanups. (Playwright handles browser closing)
-        print("Automation finished!")
-
-
-def download_file(url: str, *, target_dir: Path, target_filename: str) -> Path:
-    """
-    Downloads a file from the given URL into a custom folder & name.
-
-    Args:
-        url: The target URL from which we'll download the file.
-        target_dir: The destination directory in which we'll place the file.
-        target_filename: The local file name inside which the content gets saved.
-
-    Returns:
-        Path: A Path object pointing to the downloaded file.
-    """
-    # Obtain the content of the file hosted online.
-    response = requests.get(url)
-    response.raise_for_status()  # this will raise an exception if the request fails
-    # Write the content of the request response to the target file.
-    target_dir.mkdir(exist_ok=True)
-    local_file = target_dir / target_filename
-    local_file.write_bytes(response.content)
-    return local_file
-
-
-def fill_and_submit_form(row: dict, *, page: browser.Page):
-    """
-    Fills a single form with the information of a single row from the table.
-
-    Args:
-        row: One row from the generated table out of the input Excel file.
-        page: The page object over which the browser interactions are done.
-    """
-    field_data_map = {
-        "labelFirstName": "First Name",
-        "labelLastName": "Last Name",
-        "labelCompanyName": "Company Name",
-        "labelRole": "Role in Company",
-        "labelAddress": "Address",
-        "labelEmail": "Email",
-        "labelPhone": "Phone Number",
-    }
-    for field, key in field_data_map.items():
-        page.fill(f"//input[@ng-reflect-name='{field}']", str(row[key]))
-    page.click("input:text('Submit')")
